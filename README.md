@@ -401,6 +401,8 @@ The supervisor is in charge of managing these processes, and it responds to the 
 
 When receiving a `QUIT` signal, if workers still have jobs in-flight, these will be returned to the queue when the processes are deregistered.
 
+In `async` mode, each worker waits up to `shutdown_timeout` for its jobs, and the supervisor waits for the workers' shutdown hooks and cleanup to finish. This can take longer than `shutdown_timeout`. Stopping an embedded supervisor does not exit the host process. Running job threads or fibers are not forcibly terminated, so they can continue after their claims are returned to the queue and overlap with a retry.
+
 On Windows, the `QUIT` signal can't be trapped, so the supervisor only responds to `TERM` and `INT` there.
 
 If processes have no chance of cleaning up before exiting (e.g. if someone pulls a cable somewhere), in-flight jobs might remain claimed by the processes executing them. Processes send heartbeats, and the supervisor checks and prunes processes with expired heartbeats. Jobs that were claimed by processes with an expired heartbeat will be marked as failed with a `SolidQueue::Processes::ProcessPrunedError`. You can configure both the frequency of heartbeats and the threshold to consider a process dead. See the section below for this.

@@ -154,11 +154,8 @@ class AsyncProcessesLifecycleTest < ActiveSupport::TestCase
     signal_process(@pid, :TERM, wait: 0.2.second)
     wait_for_jobs_to_finish_for(2.seconds, except: pause)
 
-    # Wait for process to terminate. In async mode, shutdown_timeout is used by both
-    # the supervisor and workers, creating a race: exit status may be 0 (graceful) or
-    # 1 (exit!) depending on which timeout check happens first.
-    wait_for_process_termination_with_timeout(@pid, timeout: SolidQueue.shutdown_timeout + 5.seconds, exitstatus: nil)
-    assert_not process_exists?(@pid)
+    wait_for_process_termination_with_timeout(@pid, timeout: SolidQueue.shutdown_timeout + 5.seconds)
+    assert_clean_termination
 
     assert_completed_job_results("no pause")
     assert_job_status(no_pause, :finished)
@@ -173,14 +170,7 @@ class AsyncProcessesLifecycleTest < ActiveSupport::TestCase
         "registered processes: #{SolidQueue::Process.all.map { |p| { id: p.id, kind: p.kind, pid: p.pid, last_heartbeat_at: p.last_heartbeat_at } }.inspect}"
     end
 
-    # After shutdown, the pause job may be either:
-    # - claimed (exit! called, no cleanup) OR
-    # - ready (graceful exit, job released back to queue)
-    # Both are valid outcomes depending on the timing race between supervisor and worker timeouts.
-    skip_active_record_query_cache do
-      job = SolidQueue::Job.find_by(active_job_id: pause.job_id)
-      assert job.claimed? || job.ready?, "Expected pause job to be claimed or ready, but was neither"
-    end
+    assert_job_status(pause, :ready)
   end
 
   test "process some jobs that raise errors" do

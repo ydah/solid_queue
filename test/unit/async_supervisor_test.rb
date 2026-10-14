@@ -27,6 +27,34 @@ class AsyncSupervisorTest < ActiveSupport::TestCase
     assert_no_registered_processes
   end
 
+  test "stop as non-standalone releases unfinished jobs without exiting the host" do
+    job = StoreResultJob.perform_later("unfinished", pause: 30.seconds)
+
+    # Isolate exit! so a regression cannot terminate the test runner.
+    pid = fork do
+      SolidQueue.shutdown_timeout = 0.1.seconds
+      SolidQueue.on_worker_stop { sleep 0.2.seconds }
+
+      supervisor = run_supervisor_as_thread(workers: [ { queues: :background, threads: 1 } ], dispatchers: [])
+      wait_for(timeout: 5.seconds) { JobResult.exists?(value: "unfinished", status: "started") }
+      supervisor.stop
+
+      JobResult.create!(value: "host continued", status: "completed")
+      exit!(0)
+    end
+
+    wait_for_process_termination_with_timeout(pid, timeout: 5.seconds)
+
+    skip_active_record_query_cache do
+      assert JobResult.exists?(value: "host continued", status: "completed")
+      assert SolidQueue::Job.find_by!(active_job_id: job.job_id).ready?
+    end
+    assert_no_claimed_jobs
+    assert_no_registered_processes
+  ensure
+    terminate_process(pid) if pid && process_exists?(pid)
+  end
+
   test "start as non-standalone with provided configuration" do
     supervisor = run_supervisor_as_thread(workers: [], dispatchers: [ { batch_size: 100 } ], skip_recurring: false)
     wait_for_registered_processes(3, timeout: 3.seconds) # supervisor + dispatcher + scheduler

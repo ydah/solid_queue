@@ -21,7 +21,7 @@ module SolidQueue::Processes
 
       # When not supervised, block until the thread terminates for backward
       # compatibility with code that expects stop to be synchronous.
-      # When supervised, the supervisor controls the shutdown timeout.
+      # When supervised, the supervisor waits for all workers together.
       unless supervised?
         @thread&.join
       end

@@ -37,7 +37,8 @@ module SolidQueue
       def perform_graceful_termination
         process_instances.values.each(&:stop)
 
-        Timer.wait_until(SolidQueue.shutdown_timeout, -> { all_processes_terminated? })
+        # Workers enforce the timeout; wait for their cleanup before shutting down.
+        Timer.wait_until(0, -> { all_processes_terminated? })
       end
 
       def perform_immediate_termination
